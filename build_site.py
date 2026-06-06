@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Generate a minimalist literary reading website from the book PDF."""
-import os, re, subprocess, html
+import os, re, subprocess, html, json
 
 PDF = "Book After Xulon Version.pdf"
 OUT = "site"
@@ -32,9 +32,17 @@ def page_text(a, b):
                         "-enc", "UTF-8", PDF, "-"], capture_output=True, text=True)
     return r.stdout
 
+def _norm(s):
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", "", s.lower())).strip()
+
 def clean_to_paragraphs(raw, chap_num, chap_title):
+    """Reconstruct paragraphs, stripping running headers, page numbers, and ONLY
+    the chapter title where it actually appears (the first few lines)."""
+    title_norm = _norm(chap_title)
     paras, cur = [], []
-    title_words = set(re.sub(r"[^a-z ]", "", chap_title.lower()).split())
+    heading_done = False
+    acc = ""
+    seen = 0
     for line in raw.split("\n"):
         s = line.rstrip()
         stripped = s.strip()
@@ -43,24 +51,35 @@ def clean_to_paragraphs(raw, chap_num, chap_title):
         # drop running header
         if stripped.lower().rstrip(".") == HEADER_PHRASE.lower():
             continue
-        # drop page-number-only lines
+        # drop standalone page numbers (arabic) and roman-numeral folios
         if re.fullmatch(r"\d{1,3}", stripped):
             continue
-        # drop "Chapter N" heading lines
-        if re.fullmatch(r"Chapter\s+\d+", stripped, re.I):
+        if re.fullmatch(r"[ivxlcdm]{1,6}", stripped, re.I):
             continue
-        # drop the chapter title line (mostly overlaps with known title words)
-        tw = set(re.sub(r"[^a-z ]", "", stripped.lower()).split())
-        if tw and len(tw - title_words) == 0 and len(stripped) < 70:
-            continue
-        # new paragraph if line is indented (layout preserves first-line indent)
+        # --- chapter heading region (only at the very start of the chapter) ---
+        if not heading_done:
+            seen += 1
+            if re.fullmatch(r"Chapter\s+\d+", stripped, re.I):
+                continue
+            cand = _norm((acc + " " + stripped).strip())
+            if title_norm and (cand == title_norm or _norm(stripped) == title_norm):
+                heading_done = True; acc = ""
+                continue
+            if title_norm and cand and title_norm.startswith(cand):
+                acc = (acc + " " + stripped).strip()  # title spans multiple lines
+                continue
+            # this line is real body text -> heading region is over
+            heading_done = True; acc = ""
+            if seen > 6:
+                heading_done = True
+            # fall through and process this line as body
+        # --- body ---
         indented = len(s) - len(s.lstrip(" ")) >= 2
         if indented and cur:
             paras.append(" ".join(cur)); cur = []
         cur.append(stripped)
     if cur:
         paras.append(" ".join(cur))
-    # collapse internal whitespace
     return [re.sub(r"\s+", " ", p).strip() for p in paras if len(p.strip()) > 1]
 
 def esc(t):
@@ -109,11 +128,15 @@ THEME_SCRIPT = """<script>
 })();
 </script>"""
 
-def topbar(show_contents=True):
+def topbar(show_contents=True, view="scroll"):
     c = '<a class="bar-link" href="contents.html">Contents</a>' if show_contents else ''
+    if view == "flip":
+        viewlink = '<a class="bar-link" href="index.html">Scroll&nbsp;view</a>'
+    else:
+        viewlink = '<a class="bar-link" href="book.html">Flip&nbsp;view</a>'
     return f"""<div class="topbar">
   <a class="bar-link" href="index.html">{esc(TITLE)}</a>
-  <div class="bar-right">{c}<button class="bar-link theme-btn" onclick="toggleTheme()" aria-label="Toggle light or dark mode">◑</button></div>
+  <div class="bar-right">{c}{viewlink}<button class="bar-link theme-btn" onclick="toggleTheme()" aria-label="Toggle light or dark mode">◑</button></div>
 </div>"""
 
 # ---------- index / cover ----------
@@ -137,6 +160,7 @@ index = f"""{head(TITLE)}
       and a case for exposition grounded in the conviction that <em>why</em> God spoke matters more than
       competing opinions about <em>what</em> He meant.</p>
     <a class="begin" href="chapter-1.html">Begin reading &rarr;</a>
+    <p class="alt-read"><a href="book.html">or turn the pages as a flip-book &rarr;</a></p>
   </div>
 </main>
 <section class="contents-block">
@@ -210,5 +234,204 @@ window.addEventListener('scroll',function(){{
 </script>
 </body></html>"""
     open(f"{OUT}/chapter-{num}.html", "w").write(page)
+
+# ---------- flip-book view ----------
+book_json = json.dumps(
+    [{"n": n, "title": t, "paras": paras} for n, t, paras in chapter_data],
+    ensure_ascii=False)
+
+flip = f"""{head('Flip-book — ' + TITLE)}
+<script src="page-flip.min.js"></script>
+<body class="flip-body">
+{THEME_SCRIPT}
+{topbar(show_contents=False, view="flip")}
+<script type="application/json" id="bookdata">{book_json}</script>
+
+<div id="loader" class="loader">Setting the type&hellip;</div>
+
+<div id="stage" class="stage" hidden>
+  <button id="prev" class="flip-arrow flip-prev" aria-label="Previous page">&lsaquo;</button>
+  <div id="book" class="flipbook"></div>
+  <button id="next" class="flip-arrow flip-next" aria-label="Next page">&rsaquo;</button>
+</div>
+<div id="flip-foot" class="flip-foot" hidden>
+  <span id="pagelabel"></span>
+  <span class="flip-hint">click a page edge, drag a corner, or use &larr; &rarr;</span>
+</div>
+
+<script>
+const BOOK = JSON.parse(document.getElementById('bookdata').textContent);
+const TITLE = {json.dumps(TITLE)};
+const AUTHOR = {json.dumps(AUTHOR)};
+
+function calcSize(){{
+  const vw = innerWidth, vh = innerHeight;
+  const portrait = vw < 860;
+  let h = Math.min(vh - 170, 780);
+  h = Math.max(h, 380);
+  let w = Math.round(h / 1.5);
+  const maxW = portrait ? (vw - 36) : (vw - 130) / 2;
+  if (w > maxW) {{ w = Math.floor(maxW); h = Math.round(w * 1.5); }}
+  return {{ w, h, portrait }};
+}}
+
+let pageFlip = null;
+
+function buildPageEl(inner, cls){{
+  const d = document.createElement('div');
+  d.className = 'page ' + (cls || '');
+  d.innerHTML = '<div class="page-content">' + inner + '</div>';
+  return d;
+}}
+
+function paginate(size){{
+  // offscreen measurer matching the real page content box
+  const m = document.createElement('div');
+  m.className = 'page-content measurer';
+  m.style.width = size.w + 'px';
+  document.body.appendChild(m);
+  const padY = 0; // padding already in CSS .page-content
+  const limit = size.h; // content box height target
+  // measurer has same padding; compare scrollHeight to page height
+  m.style.height = 'auto';
+
+  const pages = [];     // array of html strings (content only)
+  let curHTML = '';
+  const fits = () => m.scrollHeight <= size.h;
+
+  function flush(){{ if (curHTML.trim()) {{ pages.push(curHTML); curHTML = ''; m.innerHTML=''; }} }}
+  function tryBlock(htmlStr){{
+    const prev = curHTML;
+    m.innerHTML = curHTML + htmlStr;
+    if (fits()) {{ curHTML += htmlStr; return true; }}
+    // does not fit
+    if (!prev.trim()){{ // empty page but block too big -> must split (paragraph)
+      return splitParagraph(htmlStr);
+    }}
+    m.innerHTML = prev; // revert
+    flush();
+    // retry on fresh page
+    m.innerHTML = htmlStr;
+    if (fits()) {{ curHTML = htmlStr; return true; }}
+    return splitParagraph(htmlStr);
+  }}
+  function splitParagraph(htmlStr){{
+    // htmlStr is a <p ...>....</p>; split text by words
+    const mo = htmlStr.match(/^(<p[^>]*>)([\\s\\S]*)(<\\/p>)$/);
+    if (!mo){{ curHTML += htmlStr; return true; }}
+    const open = mo[1], close = mo[3];
+    const words = mo[2].split(' ');
+    let lo = '';
+    for (let i=0;i<words.length;i++){{
+      const test = (lo ? lo+' ' : '') + words[i];
+      m.innerHTML = curHTML + open + test + close;
+      if (fits()){{ lo = test; }}
+      else {{
+        if (!lo){{ // single word too big, force it
+          curHTML += open + words[i] + close; flush();
+          return splitParagraph(open + words.slice(i+1).join(' ') + close);
+        }}
+        curHTML += open + lo + close; flush();
+        return splitParagraph(open + words.slice(i).join(' ') + close);
+      }}
+    }}
+    curHTML += open + lo + close;
+    return true;
+  }}
+
+  // cover page
+  const tocLis = BOOK.map(c => '<li><span>'+c.n+'</span>'+c.title+'</li>').join('');
+  pages.push('<div class="cover-face"><p class="bk-kicker">An essay in '+BOOK.length+' chapters</p>'
+    + '<h1 class="bk-title">'+TITLE+'</h1><p class="bk-author">'+AUTHOR+'</p>'
+    + '<ol class="bk-toc">'+tocLis+'</ol></div>');
+
+  // chapters
+  for (const ch of BOOK){{
+    flush(); // each chapter starts on a fresh leaf
+    const headHTML = '<div class="bk-chaphead"><p class="bk-chapnum">Chapter '+ch.n
+      + '</p><h2 class="bk-chaptitle">'+ch.title+'</h2></div>';
+    m.innerHTML = headHTML; curHTML = headHTML;
+    for (const p of ch.paras){{
+      tryBlock('<p>'+p+'</p>');
+    }}
+  }}
+  flush();
+  m.remove();
+  return pages;
+}}
+
+function render(){{
+  const size = calcSize();
+  const pages = paginate(size);
+
+  const bookEl = document.getElementById('book');
+  bookEl.innerHTML = '';
+  // page numbers (skip cover = leaf 0)
+  pages.forEach((htmlStr, i) => {{
+    const isCover = (i === 0);
+    const foot = isCover ? '' : '<div class="page-num">'+i+'</div>';
+    const run = isCover ? '' : '<div class="run-head">'+TITLE+'</div>';
+    const el = buildPageEl(run + htmlStr + foot, isCover ? 'page-cover' : '');
+    el.dataset.density = isCover ? 'hard' : 'soft';
+    bookEl.appendChild(el);
+  }});
+
+  if (pageFlip) {{ try {{ pageFlip.destroy(); }} catch(e){{}} }}
+  pageFlip = new St.PageFlip(bookEl, {{
+    width: size.w, height: size.h,
+    size: 'fixed',
+    minWidth: 280, maxWidth: 1000, minHeight: 380, maxHeight: 1200,
+    usePortrait: size.portrait,
+    showCover: true,
+    maxShadowOpacity: 0.5,
+    flippingTime: 700,
+    drawShadow: true,
+    mobileScrollSupport: false,
+    swipeDistance: 20,
+  }});
+  pageFlip.loadFromHTML(document.querySelectorAll('#book .page'));
+
+  const total = pages.length;
+  const label = document.getElementById('pagelabel');
+  function upd(){{
+    const idx = pageFlip.getCurrentPageIndex();
+    label.textContent = idx === 0 ? 'Cover' : ('Page ' + idx + ' / ' + (total-1));
+  }}
+  pageFlip.on('flip', upd);
+  upd();
+
+  document.getElementById('loader').hidden = true;
+  document.getElementById('stage').hidden = false;
+  document.getElementById('flip-foot').hidden = false;
+}}
+
+document.getElementById('next').onclick = () => pageFlip && pageFlip.flipNext();
+document.getElementById('prev').onclick = () => pageFlip && pageFlip.flipPrev();
+document.addEventListener('keydown', e => {{
+  if (!pageFlip) return;
+  if (e.key === 'ArrowRight') pageFlip.flipNext();
+  if (e.key === 'ArrowLeft') pageFlip.flipPrev();
+}});
+
+let rt;
+window.addEventListener('resize', () => {{
+  clearTimeout(rt);
+  rt = setTimeout(() => {{
+    document.getElementById('stage').hidden = true;
+    document.getElementById('flip-foot').hidden = true;
+    document.getElementById('loader').hidden = false;
+    requestAnimationFrame(render);
+  }}, 250);
+}});
+
+// build after fonts load so pagination matches rendered metrics
+if (document.fonts && document.fonts.ready) {{
+  document.fonts.ready.then(() => requestAnimationFrame(render));
+}} else {{
+  window.addEventListener('load', () => requestAnimationFrame(render));
+}}
+</script>
+</body></html>"""
+open(f"{OUT}/book.html", "w").write(flip)
 
 print("Done. Files in", OUT)

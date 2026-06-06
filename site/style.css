@@ -117,7 +117,70 @@ body{
   font-size:.78rem;letter-spacing:.04em;padding:2.5rem 1rem 3.5rem;
   border-top:1px solid var(--rule);margin-top:2rem}
 
+.alt-read{margin:1.3rem 0 0}
+.alt-read a{color:var(--muted);text-decoration:none;font-family:"Spectral",serif;
+  font-size:.92rem;border-bottom:1px solid var(--rule);padding-bottom:1px}
+.alt-read a:hover{color:var(--accent)}
+
 @media (max-width:480px){
   body{font-size:1.18rem}
   .toc-title{font-size:1rem}
 }
+
+/* ===== flip-book view ===== */
+.flip-body{overflow:hidden;height:100vh}
+.loader{display:flex;align-items:center;justify-content:center;height:70vh;
+  font-family:"Spectral",serif;color:var(--muted);letter-spacing:.04em;font-size:1rem}
+.stage{display:flex;align-items:center;justify-content:center;gap:.4rem;
+  height:calc(100vh - 116px);padding:.5rem}
+.flipbook{touch-action:none}
+.flip-arrow{flex:0 0 auto;background:none;border:1px solid var(--rule);
+  color:var(--muted);width:2.4rem;height:2.4rem;border-radius:50%;cursor:pointer;
+  font-size:1.4rem;line-height:1;display:flex;align-items:center;justify-content:center;
+  transition:color .15s,border-color .15s;font-family:"Spectral",serif}
+.flip-arrow:hover{color:var(--accent);border-color:var(--accent)}
+
+/* individual leaves */
+.page{background:var(--paper);overflow:hidden}
+.page.--left{box-shadow:inset -14px 0 22px -16px rgba(0,0,0,.45)}
+.page.--right{box-shadow:inset 14px 0 22px -16px rgba(0,0,0,.45)}
+.page-content{position:relative;width:100%;height:100%;
+  padding:3.2rem 2.3rem 2.9rem;color:var(--ink);
+  font-family:"EB Garamond",Georgia,serif;font-size:1.07rem;line-height:1.58;
+  text-align:justify;hyphens:auto}
+.page-content .measurer,.measurer{position:absolute;left:-9999px;top:0;visibility:hidden}
+.page-content p{margin:0 0 .85rem}
+.run-head{position:absolute;top:1.15rem;left:2.3rem;right:2.3rem;
+  font-family:"Spectral",serif;font-size:.62rem;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--muted);text-align:center;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.page-num{position:absolute;bottom:1.2rem;left:0;right:0;text-align:center;
+  font-family:"Spectral",serif;font-size:.72rem;color:var(--muted)}
+.bk-chaphead{margin:.5rem 0 1.4rem;text-align:center}
+.bk-chapnum{font-family:"Spectral",serif;text-transform:uppercase;letter-spacing:.2em;
+  font-size:.62rem;color:var(--accent);margin:0 0 .5rem}
+.bk-chaptitle{font-family:"Spectral",serif;font-weight:600;font-size:1.3rem;
+  line-height:1.2;margin:0}
+
+/* cover leaf */
+.page-cover{background:
+  linear-gradient(145deg,color-mix(in srgb,var(--accent) 16%,var(--paper)),var(--paper))}
+.cover-face{height:100%;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;text-align:center;padding:1rem}
+.bk-kicker{font-family:"Spectral",serif;text-transform:uppercase;letter-spacing:.22em;
+  font-size:.6rem;color:var(--muted);margin:0 0 1rem}
+.bk-title{font-family:"Spectral",serif;font-weight:600;font-size:1.55rem;line-height:1.15;
+  margin:0 0 .8rem;color:var(--ink)}
+.bk-author{font-family:"Spectral",serif;font-size:.85rem;letter-spacing:.05em;
+  color:var(--muted);margin:0 0 1.4rem}
+.bk-toc{list-style:none;margin:0;padding:0;text-align:left;max-width:80%;
+  font-size:.74rem;line-height:1.9;color:var(--ink);columns:1}
+.bk-toc li{display:flex;gap:.5rem}
+.bk-toc li span{color:var(--accent);min-width:1.1rem;font-family:"Spectral",serif}
+
+.flip-foot{position:fixed;bottom:0;left:0;right:0;display:flex;justify-content:center;
+  align-items:center;gap:1.4rem;padding:.7rem 1rem;border-top:1px solid var(--rule);
+  background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);
+  font-family:"Spectral",serif;font-size:.74rem;color:var(--muted)}
+.flip-hint{color:var(--muted);opacity:.75}
+@media (max-width:560px){.flip-hint{display:none}}
