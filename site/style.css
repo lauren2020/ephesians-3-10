@@ -185,3 +185,27 @@ body{
   font-family:"Spectral",serif;font-size:.74rem;color:var(--muted)}
 .flip-hint{color:var(--muted);opacity:.75}
 @media (max-width:560px){.flip-hint{display:none}}
+
+/* bookmark button */
+.bk-mark-btn{display:inline-flex;align-items:center;gap:.15rem;background:none;
+  border:1px solid var(--rule);color:var(--muted);font-family:"Spectral",serif;
+  font-size:.72rem;letter-spacing:.04em;padding:.26rem .7rem;border-radius:2rem;
+  cursor:pointer;transition:color .15s,border-color .15s,background .15s}
+.bk-mark-btn:hover{color:var(--accent);border-color:var(--accent)}
+.bk-mark-btn.is-marked{color:var(--accent);border-color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 13%,transparent)}
+
+/* resume banner */
+.resume-bar{position:fixed;top:62px;left:50%;transform:translateX(-50%);z-index:45;
+  display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;justify-content:center;
+  max-width:92vw;background:var(--paper);border:1px solid var(--rule);border-radius:.6rem;
+  padding:.5rem .7rem;box-shadow:0 8px 28px rgba(0,0,0,.16);font-family:"Spectral",serif}
+.resume-bar[hidden]{display:none!important}
+.resume-msg{font-size:.78rem;color:var(--muted)}
+.resume-go{background:var(--accent);color:var(--paper);border:none;border-radius:2rem;
+  padding:.34rem .9rem;font-family:"Spectral",serif;font-size:.76rem;cursor:pointer;
+  transition:opacity .15s}
+.resume-go:hover{opacity:.9}
+.resume-x{background:none;border:none;color:var(--muted);font-size:1.15rem;line-height:1;
+  cursor:pointer;padding:0 .15rem}
+.resume-x:hover{color:var(--accent)}

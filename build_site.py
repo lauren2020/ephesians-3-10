@@ -254,7 +254,9 @@ flip = f"""{head('Flip-book — ' + TITLE)}
   <div id="book" class="flipbook"></div>
   <button id="next" class="flip-arrow flip-next" aria-label="Next page">&rsaquo;</button>
 </div>
+<div id="resume" class="resume-bar" hidden></div>
 <div id="flip-foot" class="flip-foot" hidden>
+  <button id="bookmark-btn" class="bk-mark-btn" title="Bookmark this page">&#x2691;&nbsp;<span>Bookmark</span></button>
   <span id="pagelabel"></span>
   <span class="flip-hint">click a page edge, drag a corner, or use &larr; &rarr;</span>
 </div>
@@ -351,13 +353,14 @@ function paginate(size){{
     + '<ol class="bk-toc">'+tocLis+'</ol></div>');
 
   // chapters
+  let PID = 0;
   for (const ch of BOOK){{
     flush(); // each chapter starts on a fresh leaf
     const headHTML = '<div class="bk-chaphead"><p class="bk-chapnum">Chapter '+ch.n
       + '</p><h2 class="bk-chaptitle">'+ch.title+'</h2></div>';
     m.innerHTML = headHTML; curHTML = headHTML;
     for (const p of ch.paras){{
-      tryBlock('<p>'+p+'</p>');
+      tryBlock('<p data-pid="'+(PID++)+'">'+p+'</p>');
     }}
   }}
   flush();
@@ -402,8 +405,90 @@ function render(){{
     const idx = pageFlip.getCurrentPageIndex();
     label.textContent = idx === 0 ? 'Cover' : ('Page ' + idx + ' / ' + (total-1));
   }}
-  pageFlip.on('flip', upd);
+
+  // ---------- bookmark + resume (anchored to text, resize-safe) ----------
+  const LS_LAST = 'cpds:last', LS_MARK = 'cpds:mark';
+  const lsGet = k => {{ try {{ return JSON.parse(localStorage.getItem(k) || 'null'); }} catch(e) {{ return null; }} }};
+  const lsSet = (k,v) => {{ try {{ localStorage.setItem(k, JSON.stringify(v)); }} catch(e) {{}} }};
+  const lsDel = k => {{ try {{ localStorage.removeItem(k); }} catch(e) {{}} }};
+
+  const leaves = [...document.querySelectorAll('#book .page')];
+  const pidLeaf = new Map();   // paragraph id -> first leaf it appears on
+  const leafPid = [];          // first paragraph id on each leaf
+  leaves.forEach((el,i) => {{
+    const ids = [...el.querySelectorAll('[data-pid]')].map(n => +n.dataset.pid);
+    leafPid[i] = ids.length ? ids[0] : null;
+    ids.forEach(pid => {{ if (!pidLeaf.has(pid)) pidLeaf.set(pid, i); }});
+  }});
+  const sortedPids = [...pidLeaf.keys()].sort((a,b) => a-b);
+  function leafForPid(pid){{
+    if (pid == null) return 1;
+    if (pidLeaf.has(pid)) return pidLeaf.get(pid);
+    let best = 1;
+    for (const p of sortedPids) {{ if (p <= pid) best = pidLeaf.get(p); else break; }}
+    return best;
+  }}
+  function currentAnchor(){{
+    const idx = pageFlip.getCurrentPageIndex();
+    let i = idx, pid = null;
+    while (i < leaves.length && pid == null) {{ pid = leafPid[i]; i++; }}
+    return {{ pid: pid, page: idx }};
+  }}
+
+  const markBtn = document.getElementById('bookmark-btn');
+  function refreshMarkBtn(){{
+    const mark = lsGet(LS_MARK);
+    const idx = pageFlip.getCurrentPageIndex();
+    const on = mark && leafForPid(mark.pid) === idx;
+    markBtn.classList.toggle('is-marked', !!on);
+    markBtn.querySelector('span').textContent = on ? 'Bookmarked' : 'Bookmark';
+  }}
+  markBtn.onclick = () => {{
+    const mark = lsGet(LS_MARK);
+    const idx = pageFlip.getCurrentPageIndex();
+    if (mark && leafForPid(mark.pid) === idx) lsDel(LS_MARK);
+    else lsSet(LS_MARK, currentAnchor());
+    refreshMarkBtn();
+  }};
+
+  pageFlip.on('flip', () => {{ upd(); lsSet(LS_LAST, currentAnchor()); refreshMarkBtn(); }});
   upd();
+  refreshMarkBtn();
+
+  const rb = document.getElementById('resume');
+  const hideResume = () => {{ rb.hidden = true; }};
+  function jump(pid){{ pageFlip.turnToPage(leafForPid(pid)); upd(); refreshMarkBtn(); hideResume(); }}
+
+  if (!window.__cpdsBooted) {{
+    // first load: offer to resume bookmark and/or last position
+    window.__cpdsBooted = true;
+    const mark = lsGet(LS_MARK), last = lsGet(LS_LAST);
+    const offers = [];
+    if (mark && mark.pid != null) offers.push({{ label: '\\u2691 Bookmark · p.' + leafForPid(mark.pid), pid: mark.pid }});
+    if (last && last.page > 0 && (!mark || leafForPid(last.pid) !== leafForPid(mark.pid)))
+      offers.push({{ label: 'Continue · p.' + leafForPid(last.pid), pid: last.pid }});
+    if (offers.length) {{
+      rb.innerHTML = '';
+      const msg = document.createElement('span');
+      msg.className = 'resume-msg'; msg.textContent = 'Pick up where you left off:';
+      rb.appendChild(msg);
+      offers.forEach(o => {{
+        const btn = document.createElement('button');
+        btn.className = 'resume-go'; btn.textContent = o.label;
+        btn.onclick = () => jump(o.pid);
+        rb.appendChild(btn);
+      }});
+      const x = document.createElement('button');
+      x.className = 'resume-x'; x.innerHTML = '&times;'; x.title = 'Dismiss';
+      x.onclick = hideResume; rb.appendChild(x);
+      rb.hidden = false;
+      setTimeout(() => {{ hideResume(); }}, 15000);
+    }}
+  }} else {{
+    // re-render after a resize: silently restore the reader's place
+    const last = lsGet(LS_LAST);
+    if (last && last.pid != null) {{ pageFlip.turnToPage(leafForPid(last.pid)); upd(); refreshMarkBtn(); }}
+  }}
 
   document.getElementById('loader').hidden = true;
   document.getElementById('stage').hidden = false;
