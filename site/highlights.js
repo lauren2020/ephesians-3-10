@@ -151,6 +151,65 @@
     if(changed){ lsSet(arr); renderPage(); renderList(); }
   }
 
+  // ---- export / import (persist highlights to a file the user owns) ----
+  function bookTitle(){
+    var a=document.querySelector('.topbar a.bar-link');
+    return (a && a.textContent.trim()) || document.title || '';
+  }
+  function locKey(h){ return h.chap+'|'+h.cidx+'|'+h.start+'|'+h.end; }
+  function num(v){ return (v!=null && v!=='' && isFinite(+v)) ? +v : null; }
+  function validRec(h){
+    if(!h || typeof h.text!=='string' || !h.text) return false;
+    return num(h.chap)!=null && num(h.cidx)!=null && num(h.start)!=null && num(h.end)!=null && (+h.end)>(+h.start);
+  }
+  function exportData(){
+    return { app:'cpds', type:'highlights', version:1, book:bookTitle(),
+             exportedAt:new Date().toISOString(), highlights:lsGet() };
+  }
+  function exportHighlights(){
+    var hs=lsGet();
+    if(!hs.length){ ioMsg('No highlights to export yet.', true); return; }
+    var blob=new Blob([JSON.stringify(exportData(), null, 2)], {type:'application/json'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url; a.download='highlights-'+new Date().toISOString().slice(0,10)+'.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ try{ URL.revokeObjectURL(url); }catch(e){} }, 1000);
+    ioMsg(hs.length+' highlight'+(hs.length===1?'':'s')+' saved to a file.');
+  }
+  function importHighlights(text){
+    var parsed;
+    try{ parsed=JSON.parse(text); }catch(e){ ioMsg('Could not read file: it is not valid JSON.', true); return {added:0,updated:0,skipped:0,error:true}; }
+    var incoming = Array.isArray(parsed) ? parsed
+                 : (parsed && Array.isArray(parsed.highlights) ? parsed.highlights : null);
+    if(!incoming){ ioMsg('No highlights found in that file.', true); return {added:0,updated:0,skipped:0,error:true}; }
+    var existing=lsGet(), byLoc={}, byId={};
+    existing.forEach(function(h){ byLoc[locKey(h)]=h; byId[h.id]=h; });
+    var added=0, updated=0, skipped=0;
+    incoming.forEach(function(h){
+      if(!validRec(h)){ skipped++; return; }
+      var rec={ chap:num(h.chap), cidx:num(h.cidx), start:num(h.start), end:num(h.end),
+                text:String(h.text), note:(h.note?String(h.note).trim():''), ts:(num(h.ts)||Date.now()) };
+      var loc=locKey(rec), prev=byLoc[loc];
+      if(prev){
+        if((prev.note||'')!==rec.note || (prev.text||'')!==rec.text){ prev.note=rec.note; prev.text=rec.text; updated++; }
+        return;
+      }
+      rec.id=(h.id && !byId[h.id]) ? String(h.id) : uid();
+      existing.push(rec); byLoc[loc]=rec; byId[rec.id]=rec; added++;
+    });
+    lsSet(existing); renderPage(); updateCount(); renderList();
+    ioMsg('Imported '+added+' new, '+updated+' updated'+(skipped?(', '+skipped+' skipped'):'')+'.');
+    return {added:added, updated:updated, skipped:skipped};
+  }
+  var ioMsgEl=null;
+  function ioMsg(t, err){
+    if(!ioMsgEl) return;
+    ioMsgEl.textContent=t; ioMsgEl.hidden=false;
+    ioMsgEl.classList.toggle('is-err', !!err);
+    clearTimeout(ioMsg._t); ioMsg._t=setTimeout(function(){ if(ioMsgEl) ioMsgEl.hidden=true; }, 6000);
+  }
+
   // ---- click a highlight -> small remove popup ----
   var pop=null;
   function hidePop(){ if(pop){ pop.remove(); pop=null; } }
@@ -191,10 +250,19 @@
         '<div class="hl-head"><span class="hl-head-t">Your highlights</span>'+
         '<button class="hl-x" type="button" aria-label="Close">×</button></div>'+
         '<div class="hl-list"></div>'+
-        '<div class="hl-foot"><button class="hl-clear" type="button">Clear all highlights</button></div>'+
+        '<div class="hl-foot">'+
+          '<div class="hl-io">'+
+            '<button class="hl-export" type="button">↓ Export</button>'+
+            '<button class="hl-import" type="button">↑ Import</button>'+
+          '</div>'+
+          '<p class="hl-io-msg" hidden></p>'+
+          '<button class="hl-clear" type="button">Clear all highlights</button>'+
+          '<input type="file" class="hl-file" accept="application/json,.json" hidden>'+
+        '</div>'+
       '</aside>';
     document.body.appendChild(panel);
     listEl=panel.querySelector('.hl-list');
+    ioMsgEl=panel.querySelector('.hl-io-msg');
     panel.querySelector('.hl-backdrop').addEventListener('click', closePanel);
     panel.querySelector('.hl-x').addEventListener('click', closePanel);
     panel.querySelector('.hl-clear').addEventListener('click', function(){
@@ -202,6 +270,16 @@
       if(window.confirm('Remove all of your saved highlights? This cannot be undone.')){
         lsSet([]); renderPage(); updateCount(); renderList();
       }
+    });
+    panel.querySelector('.hl-export').addEventListener('click', exportHighlights);
+    var fileInput=panel.querySelector('.hl-file');
+    panel.querySelector('.hl-import').addEventListener('click', function(){ fileInput.click(); });
+    fileInput.addEventListener('change', function(){
+      var f=fileInput.files && fileInput.files[0]; if(!f) return;
+      var reader=new FileReader();
+      reader.onload=function(){ importHighlights(String(reader.result)); fileInput.value=''; };
+      reader.onerror=function(){ ioMsg('Could not read the file.', true); fileInput.value=''; };
+      reader.readAsText(f);
     });
   }
   function openPanel(){ buildPanel(); renderList(); panel.hidden=false; document.body.classList.add('hl-panel-open'); }
@@ -333,7 +411,8 @@
     if(ob) ob.addEventListener('click', openPanel);
     if(!isFlip){ renderPage(); handleHash(); }
   }
-  window.cpdsHighlights={ render:renderPage, open:openPanel };
+  window.cpdsHighlights={ render:renderPage, open:openPanel,
+    exportData:exportData, importData:importHighlights };
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', autorun);
   else autorun();
 })();

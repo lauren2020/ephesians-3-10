@@ -344,6 +344,15 @@ body.hl-panel-open{overflow:hidden}
   font-size:1.1rem;line-height:1;padding:.35rem .4rem;border-radius:.3rem}
 .hl-del:hover{color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent)}
 .hl-foot{flex:0 0 auto;padding:.8rem 1.2rem;border-top:1px solid var(--rule)}
+.hl-io{display:flex;gap:.5rem;margin-bottom:.55rem}
+.hl-export,.hl-import{flex:1 1 0;background:none;border:1px solid var(--rule);border-radius:.4rem;cursor:pointer;
+  font-family:"Spectral",serif;font-size:.78rem;color:var(--ink);padding:.45rem .6rem}
+.hl-export:hover,.hl-import:hover{color:var(--accent);border-color:var(--accent)}
+.hl-io-msg{margin:0 0 .55rem;font-family:"EB Garamond",Georgia,serif;font-size:.86rem;
+  line-height:1.4;color:var(--muted)}
+.hl-io-msg.is-err{color:#b4452f}
+:root[data-theme="dark"] .hl-io-msg.is-err{color:#e08a72}
+.hl-io-msg[hidden]{display:none}
 .hl-clear{background:none;border:1px solid var(--rule);border-radius:.4rem;cursor:pointer;
   font-family:"Spectral",serif;font-size:.78rem;color:var(--muted);padding:.45rem .8rem;width:100%}
 .hl-clear:hover{color:var(--accent);border-color:var(--accent)}
