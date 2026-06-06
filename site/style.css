@@ -128,11 +128,12 @@ body{
 }
 
 /* ===== flip-book view ===== */
-.flip-body{overflow:hidden;height:100vh}
-.loader{display:flex;align-items:center;justify-content:center;height:70vh;
-  font-family:"Spectral",serif;color:var(--muted);letter-spacing:.04em;font-size:1rem}
-.stage{display:flex;align-items:center;justify-content:center;gap:.4rem;
-  height:calc(100vh - 116px);padding:.5rem}
+.flip-body{height:100vh;overflow:hidden;display:flex;flex-direction:column}
+.loader{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
+  background:var(--bg);font-family:"Spectral",serif;color:var(--muted);letter-spacing:.04em;font-size:1rem}
+.stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;gap:.4rem;padding:.5rem}
+/* the [hidden] rules must beat the display rules above so toggling works in every browser */
+.loader[hidden],.stage[hidden],.flip-foot[hidden]{display:none!important}
 .flipbook{touch-action:none}
 .flip-arrow{flex:0 0 auto;background:none;border:1px solid var(--rule);
   color:var(--muted);width:2.4rem;height:2.4rem;border-radius:50%;cursor:pointer;

@@ -50,8 +50,13 @@ const AUTHOR = "Theophilus";
 function calcSize(){
   const vw = innerWidth, vh = innerHeight;
   const portrait = vw < 860;
-  let h = Math.min(vh - 170, 780);
-  h = Math.max(h, 380);
+  // base page height on the space actually left between the top bar and footer
+  const bar = document.querySelector('.topbar');
+  const barH = bar ? bar.offsetHeight : 56;
+  const footH = 46;
+  const avail = vh - barH - footH - 24;     // 24 = stage padding/breathing room
+  let h = Math.min(avail, 820);
+  h = Math.max(h, 320);
   let w = Math.round(h / 1.5);
   const maxW = portrait ? (vw - 36) : (vw - 130) / 2;
   if (w > maxW) { w = Math.floor(maxW); h = Math.round(w * 1.5); }
@@ -196,6 +201,15 @@ document.addEventListener('keydown', e => {
   if (e.key === 'ArrowLeft') pageFlip.flipPrev();
 });
 
+function safeRender(){
+  try { render(); }
+  catch (e) {
+    console.error(e);
+    const l = document.getElementById('loader');
+    if (l) { l.hidden = false; l.textContent = 'Sorry — the flip-book could not be laid out. Please reload the page.'; }
+  }
+}
+
 let rt;
 window.addEventListener('resize', () => {
   clearTimeout(rt);
@@ -203,15 +217,15 @@ window.addEventListener('resize', () => {
     document.getElementById('stage').hidden = true;
     document.getElementById('flip-foot').hidden = true;
     document.getElementById('loader').hidden = false;
-    requestAnimationFrame(render);
+    document.getElementById('loader').textContent = 'Setting the type\u2026';
+    requestAnimationFrame(safeRender);
   }, 250);
 });
 
-// build after fonts load so pagination matches rendered metrics
-if (document.fonts && document.fonts.ready) {
-  document.fonts.ready.then(() => requestAnimationFrame(render));
-} else {
-  window.addEventListener('load', () => requestAnimationFrame(render));
-}
+// Build once fonts are ready so pagination matches rendered metrics, but never
+// wait more than 1.8s — otherwise a slow/blocked font request would hang the loader.
+const fontsReady = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+Promise.race([fontsReady, new Promise(r => setTimeout(r, 1800))])
+  .then(() => requestAnimationFrame(safeRender));
 </script>
 </body></html>
