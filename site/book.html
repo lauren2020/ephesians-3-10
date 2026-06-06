@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Spectral:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+<script src="scripture.js" defer></script>
 </head>
 <script src="page-flip.min.js"></script>
 <body class="flip-body">
@@ -181,6 +182,9 @@ function render(){
     swipeDistance: 20,
   });
   pageFlip.loadFromHTML(document.querySelectorAll('#book .page'));
+
+  // hyperlink scripture references on the freshly paginated pages
+  if (window.linkifyScripture) window.linkifyScripture(document.getElementById('book'));
 
   const total = pages.length;
   const label = document.getElementById('pagelabel');

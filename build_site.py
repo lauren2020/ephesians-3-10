@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Generate a minimalist literary reading website from the book PDF."""
 import os, re, subprocess, html, json
+import scripture_lib as SX
 
 PDF = "Book After Xulon Version.pdf"
 OUT = "site"
@@ -100,6 +101,112 @@ ded = clean_to_paragraphs(ded_raw, 0, "Dedication of this book")
 
 os.makedirs(OUT, exist_ok=True)
 
+# ---------- scripture: detect references, resolve KJV passages, write scripture.js ----------
+all_paras = [p for _, _, ps in chapter_data for p in ps] + ded
+sx_passages = {}
+sx_unresolved = set()
+for para in all_paras:
+    for m, bk, ch, vs, ve in SX.find_refs(para):
+        k = SX.key_for(bk, ch, vs, ve)
+        if k in sx_passages:
+            continue
+        p = SX.passage(bk, ch, vs, ve)
+        if p:
+            sx_passages[k] = p
+        else:
+            sx_unresolved.add(m.group(0).strip())
+print(f"Scripture: {len(sx_passages)} passages linked; "
+      f"{len(sx_unresolved)} unresolved {sorted(sx_unresolved)[:6]}")
+
+SCRIPTURE_JS_TEMPLATE = r"""(function(){
+  var P = __PASSAGES__;
+  var B = __BOOKMAP__;
+  var RE = /(?:([1-3])\s?)?([A-Z][A-Za-z]+)\.?\s*(\d{1,3}):\s*(\d{1,3})(?:\s*[-–]\s*(\d{1,3}))?(ff?\.?)?/g;
+  function keyFor(g1,g2,ch,vs,ve){
+    var tok=((g1||'')+g2).toLowerCase(), bn=B[tok];
+    if(!bn) return null;
+    ve = ve ? +ve : +vs; vs=+vs;
+    if(ve<vs) ve=vs;
+    return bn+'.'+(+ch)+'.'+vs+'.'+ve;
+  }
+  var modal=null;
+  function buildModal(){
+    if(modal) return;
+    modal=document.createElement('div');
+    modal.className='sx-modal'; modal.hidden=true;
+    modal.innerHTML='<div class="sx-backdrop"></div>'+
+      '<div class="sx-card" role="dialog" aria-modal="true" aria-label="Scripture passage">'+
+      '<button class="sx-close" aria-label="Close">×</button>'+
+      '<p class="sx-ref"></p><div class="sx-verses"></div>'+
+      '<p class="sx-foot">King James Version &middot; surrounding verses shown for context</p></div>';
+    document.body.appendChild(modal);
+    modal.querySelector('.sx-backdrop').addEventListener('click',closeModal);
+    modal.querySelector('.sx-close').addEventListener('click',closeModal);
+  }
+  function openModal(key){
+    buildModal();
+    var p=P[key]; if(!p) return;
+    modal.querySelector('.sx-ref').textContent=p.label;
+    var box=modal.querySelector('.sx-verses'); box.innerHTML='';
+    p.verses.forEach(function(v){
+      var el=document.createElement('p');
+      el.className='sx-v'+(v.hl?' hl':'');
+      el.innerHTML='<sup>'+v.n+'</sup>'+v.t;
+      box.appendChild(el);
+    });
+    box.scrollTop=0;
+    modal.hidden=false;
+    document.body.classList.add('sx-open');
+  }
+  function closeModal(){ if(modal){ modal.hidden=true; document.body.classList.remove('sx-open'); } }
+  var SKIP={A:1,SCRIPT:1,STYLE:1,BUTTON:1,SUP:1,H1:1,H2:1};
+  function linkifyScripture(root){
+    if(!root) return;
+    var walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:function(n){
+      if(!n.nodeValue || n.nodeValue.indexOf(':')<0) return NodeFilter.FILTER_REJECT;
+      var p=n.parentNode;
+      while(p && p!==root){ if(SKIP[p.nodeName]||(p.classList&&p.classList.contains('scripture'))) return NodeFilter.FILTER_REJECT; p=p.parentNode; }
+      return NodeFilter.FILTER_ACCEPT;
+    }});
+    var nodes=[], nn; while(nn=walker.nextNode()) nodes.push(nn);
+    nodes.forEach(function(node){
+      var text=node.nodeValue, mm, last=0, frag=null; RE.lastIndex=0;
+      while(mm=RE.exec(text)){
+        var key=keyFor(mm[1],mm[2],mm[3],mm[4],mm[5]);
+        if(!key || !P[key]) continue;
+        if(!frag) frag=document.createDocumentFragment();
+        frag.appendChild(document.createTextNode(text.slice(last,mm.index)));
+        var a=document.createElement('a');
+        a.className='scripture'; a.href='#'; a.dataset.key=key; a.setAttribute('role','button');
+        a.title='View '+P[key].label+' (KJV)';
+        a.textContent=mm[0];
+        frag.appendChild(a); last=mm.index+mm[0].length;
+      }
+      if(frag){ frag.appendChild(document.createTextNode(text.slice(last))); node.parentNode.replaceChild(frag,node); }
+    });
+  }
+  // prevent the flip-book from turning the page when a reference is clicked
+  document.addEventListener('mousedown',function(e){ if(e.target.closest&&e.target.closest('.scripture')) e.stopPropagation(); },true);
+  document.addEventListener('click',function(e){
+    var a=e.target.closest&&e.target.closest('.scripture');
+    if(a){ e.preventDefault(); e.stopPropagation(); openModal(a.dataset.key); }
+  },true);
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape') closeModal(); });
+  window.linkifyScripture=linkifyScripture;
+  function autorun(){
+    buildModal();
+    if(!document.body.classList.contains('flip-body'))
+      linkifyScripture(document.querySelector('main')||document.body);
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',autorun);
+  else autorun();
+})();
+"""
+scripture_js = (SCRIPTURE_JS_TEMPLATE
+                .replace("__PASSAGES__", json.dumps(sx_passages, ensure_ascii=False, separators=(",", ":")))
+                .replace("__BOOKMAP__", json.dumps(SX.bookmap_js(), separators=(",", ":"))))
+open(f"{OUT}/scripture.js", "w").write(scripture_js)
+
 # ---------- shared head ----------
 def head(page_title, depth_home="index.html"):
     return f"""<!DOCTYPE html>
@@ -113,6 +220,7 @@ def head(page_title, depth_home="index.html"):
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Spectral:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+<script src="scripture.js" defer></script>
 </head>"""
 
 THEME_SCRIPT = """<script>
@@ -398,6 +506,9 @@ function render(){{
     swipeDistance: 20,
   }});
   pageFlip.loadFromHTML(document.querySelectorAll('#book .page'));
+
+  // hyperlink scripture references on the freshly paginated pages
+  if (window.linkifyScripture) window.linkifyScripture(document.getElementById('book'));
 
   const total = pages.length;
   const label = document.getElementById('pagelabel');
