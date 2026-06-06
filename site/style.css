@@ -227,7 +227,15 @@ body.sx-open{overflow:hidden}
 .sx-close:hover{color:var(--accent)}
 .sx-ref{font-family:"Spectral",serif;font-weight:600;font-size:1.15rem;color:var(--ink);
   margin:0 1.5rem .9rem 0;letter-spacing:.01em}
-.sx-verses{overflow-y:auto;font-family:"EB Garamond",Georgia,serif;font-size:1.12rem;line-height:1.62}
+.sx-verses{overflow-y:auto;font-family:"EB Garamond",Georgia,serif;font-size:1.12rem;line-height:1.62;
+  flex:1 1 auto;min-height:4rem}
+.sx-more{flex:0 0 auto;display:block;width:100%;background:none;border:none;cursor:pointer;
+  font-family:"Spectral",serif;font-size:.74rem;letter-spacing:.04em;color:var(--accent);
+  padding:.5rem .5rem;border-radius:.35rem;transition:background .15s,color .15s}
+.sx-more:hover:not(:disabled){background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.sx-up{margin-bottom:.3rem;border-bottom:1px solid var(--rule)}
+.sx-down{margin-top:.3rem;border-top:1px solid var(--rule)}
+.sx-more:disabled{color:var(--muted);cursor:default;font-style:italic;opacity:.8;letter-spacing:.02em}
 .sx-v{margin:0 0 .5rem;color:var(--muted)}
 .sx-v sup{color:var(--accent);font-size:.66em;font-weight:600;margin-right:.25em;vertical-align:super}
 .sx-v.hl{color:var(--ink);background:color-mix(in srgb,var(--accent) 12%,transparent);

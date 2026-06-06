@@ -129,6 +129,26 @@ def passage(book, ch, vs, ve, context=2):
     label = f"{DISPLAY[book]} {ch}:{vs}" + (f"–{ve}" if ve != vs else "")
     return {"label": label, "book": DISPLAY[book], "chapter": ch, "verses": verses}
 
+def label_for(book, ch, vs, ve):
+    return f"{DISPLAY[book]} {ch}:{vs}" + (f"–{ve}" if ve != vs else "")
+
+def chapter_verses(book, ch):
+    """Return list of KJV verse texts for a whole chapter (index 0 = verse 1), or None."""
+    try:
+        n = bible.get_number_of_verses(book, ch)
+    except Exception:
+        return None
+    if not n:
+        return None
+    out = []
+    for v in range(1, n + 1):
+        vid = book.value * 1_000_000 + ch * 1000 + v
+        try:
+            out.append(bible.get_verse_text(vid, version=bible.Version.KING_JAMES))
+        except Exception:
+            out.append("")
+    return out
+
 def bookmap_js():
     """token -> book number, for the browser parser."""
     return {tok: b.value for tok, b in BOOK_ALIASES.items()}

@@ -102,25 +102,34 @@ ded = clean_to_paragraphs(ded_raw, 0, "Dedication of this book")
 os.makedirs(OUT, exist_ok=True)
 
 # ---------- scripture: detect references, resolve KJV passages, write scripture.js ----------
+# Each passage points at its full chapter (sx_chapters) so the modal can expand
+# context up and down on demand. Chapters are stored once and shared.
 all_paras = [p for _, _, ps in chapter_data for p in ps] + ded
-sx_passages = {}
+sx_passages = {}        # refKey -> {label, ck (chapterKey), vs, ve}
+sx_chapters = {}        # "<booknum>.<chap>" -> {book, n, v:[verse texts...]}
 sx_unresolved = set()
 for para in all_paras:
     for m, bk, ch, vs, ve in SX.find_refs(para):
         k = SX.key_for(bk, ch, vs, ve)
         if k in sx_passages:
             continue
-        p = SX.passage(bk, ch, vs, ve)
-        if p:
-            sx_passages[k] = p
-        else:
+        ck = f"{bk.value}.{ch}"
+        if ck not in sx_chapters:
+            verses = SX.chapter_verses(bk, ch)
+            if verses:
+                sx_chapters[ck] = {"book": SX.DISPLAY[bk], "n": ch, "v": verses}
+        if ck not in sx_chapters or vs > len(sx_chapters[ck]["v"]):
             sx_unresolved.add(m.group(0).strip())
-print(f"Scripture: {len(sx_passages)} passages linked; "
+            continue
+        sx_passages[k] = {"label": SX.label_for(bk, ch, vs, ve), "ck": ck, "vs": vs, "ve": ve}
+print(f"Scripture: {len(sx_passages)} passages across {len(sx_chapters)} chapters; "
       f"{len(sx_unresolved)} unresolved {sorted(sx_unresolved)[:6]}")
 
 SCRIPTURE_JS_TEMPLATE = r"""(function(){
   var P = __PASSAGES__;
+  var C = __CHAPTERS__;
   var B = __BOOKMAP__;
+  var CHUNK = 5;  // verses added per "load more" click
   var RE = /(?:([1-3])\s?)?([A-Z][A-Za-z]+)\.?\s*(\d{1,3}):\s*(\d{1,3})(?:\s*[-–]\s*(\d{1,3}))?(ff?\.?)?/g;
   function keyFor(g1,g2,ch,vs,ve){
     var tok=((g1||'')+g2).toLowerCase(), bn=B[tok];
@@ -129,7 +138,7 @@ SCRIPTURE_JS_TEMPLATE = r"""(function(){
     if(ve<vs) ve=vs;
     return bn+'.'+(+ch)+'.'+vs+'.'+ve;
   }
-  var modal=null;
+  var modal=null, ST=null;
   function buildModal(){
     if(modal) return;
     modal=document.createElement('div');
@@ -137,24 +146,49 @@ SCRIPTURE_JS_TEMPLATE = r"""(function(){
     modal.innerHTML='<div class="sx-backdrop"></div>'+
       '<div class="sx-card" role="dialog" aria-modal="true" aria-label="Scripture passage">'+
       '<button class="sx-close" aria-label="Close">×</button>'+
-      '<p class="sx-ref"></p><div class="sx-verses"></div>'+
-      '<p class="sx-foot">King James Version &middot; surrounding verses shown for context</p></div>';
+      '<p class="sx-ref"></p>'+
+      '<button class="sx-more sx-up" type="button"></button>'+
+      '<div class="sx-verses"></div>'+
+      '<button class="sx-more sx-down" type="button"></button>'+
+      '<p class="sx-foot">King James Version</p></div>';
     document.body.appendChild(modal);
     modal.querySelector('.sx-backdrop').addEventListener('click',closeModal);
     modal.querySelector('.sx-close').addEventListener('click',closeModal);
+    modal.querySelector('.sx-up').addEventListener('click',function(){
+      if(!ST||ST.lo<=1) return;
+      ST.lo=Math.max(1, ST.lo-CHUNK); renderVerses('up');
+    });
+    modal.querySelector('.sx-down').addEventListener('click',function(){
+      if(!ST||ST.hi>=ST.total) return;
+      ST.hi=Math.min(ST.total, ST.hi+CHUNK); renderVerses('down');
+    });
+  }
+  function renderVerses(mode){
+    var box=modal.querySelector('.sx-verses');
+    var prevH=box.scrollHeight, prevTop=box.scrollTop;
+    box.innerHTML='';
+    for(var v=ST.lo; v<=ST.hi; v++){
+      var el=document.createElement('p');
+      el.className='sx-v'+(v>=ST.vs && v<=ST.ve ? ' hl' : '');
+      el.innerHTML='<sup>'+v+'</sup>'+ST.verses[v-1];
+      box.appendChild(el);
+    }
+    var up=modal.querySelector('.sx-up'), dn=modal.querySelector('.sx-down');
+    if(ST.lo<=1){ up.disabled=true; up.textContent='Beginning of '+ST.book+' '+ST.chap; }
+    else { up.disabled=false; up.innerHTML='↑ Show earlier verses'; }
+    if(ST.hi>=ST.total){ dn.disabled=true; dn.textContent='End of '+ST.book+' '+ST.chap; }
+    else { dn.disabled=false; dn.innerHTML='Show later verses ↓'; }
+    if(mode==='up') box.scrollTop = prevTop + (box.scrollHeight - prevH);
+    else if(mode==='open') box.scrollTop = 0;
   }
   function openModal(key){
     buildModal();
     var p=P[key]; if(!p) return;
+    var ch=C[p.ck]; if(!ch) return;
+    ST={ verses:ch.v, total:ch.v.length, book:ch.book, chap:ch.n,
+         vs:p.vs, ve:p.ve, lo:Math.max(1,p.vs-2), hi:Math.min(ch.v.length, p.ve+2) };
     modal.querySelector('.sx-ref').textContent=p.label;
-    var box=modal.querySelector('.sx-verses'); box.innerHTML='';
-    p.verses.forEach(function(v){
-      var el=document.createElement('p');
-      el.className='sx-v'+(v.hl?' hl':'');
-      el.innerHTML='<sup>'+v.n+'</sup>'+v.t;
-      box.appendChild(el);
-    });
-    box.scrollTop=0;
+    renderVerses('open');
     modal.hidden=false;
     document.body.classList.add('sx-open');
   }
@@ -204,6 +238,7 @@ SCRIPTURE_JS_TEMPLATE = r"""(function(){
 """
 scripture_js = (SCRIPTURE_JS_TEMPLATE
                 .replace("__PASSAGES__", json.dumps(sx_passages, ensure_ascii=False, separators=(",", ":")))
+                .replace("__CHAPTERS__", json.dumps(sx_chapters, ensure_ascii=False, separators=(",", ":")))
                 .replace("__BOOKMAP__", json.dumps(SX.bookmap_js(), separators=(",", ":"))))
 open(f"{OUT}/scripture.js", "w").write(scripture_js)
 
