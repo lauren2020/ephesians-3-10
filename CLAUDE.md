@@ -89,14 +89,27 @@ Highlights **without a note are not edit requests** — skip them.
 
 ## The reader highlight system (and its export format)
 
-`site/highlights.js` lets readers select text, save highlights (in `localStorage` under
-`cpds:highlights`), attach notes, view them in a slide-out panel, and **export/import**
-them as JSON. A highlight record:
+`site/highlights.js` lets readers select text, save highlights, attach notes, organize
+them into named **groups** (switch the active group, create/rename/delete groups), view
+them in a slide-out panel, and **export/import** as JSON. Highlights are stored in
+`localStorage` under `cpds:hlgroups` as `{v, activeId, groups:[{id, name, highlights:[…]}]}`
+(a legacy flat `cpds:highlights` array is migrated into a default group on first load).
+A highlight record:
 
 ```json
 { "id": "h…", "chap": 1, "cidx": 0, "start": 27, "end": 41,
   "text": "the highlighted text", "note": "author's instruction", "ts": 1700000000000 }
 ```
+
+An export wraps one group's highlights:
+
+```json
+{ "app": "cpds", "type": "highlights", "version": 1, "book": "…", "group": "Sermon prep",
+  "exportedAt": "…", "highlights": [ { …record… } ] }
+```
+
+Each export/import operates on a single group; an import lands in the active group, or in a
+new group when "Import as a new group" is chosen.
 
 `chap`/`cidx` identify the paragraph (matching the `data-chap`/`data-cidx` attributes in
 the generated HTML, which in turn match the manuscript's chapter file and paragraph

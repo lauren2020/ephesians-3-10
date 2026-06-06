@@ -285,10 +285,65 @@ open(f"{OUT}/scripture.js", "w").write(scripture_js)
 # the paragraph's text, so highlights survive reloads and are view-independent
 # (the same anchor maps onto the flip view's paragraphs for future support).
 HIGHLIGHTS_JS = r"""(function(){
-  var LS='cpds:highlights';
-  function lsGet(){ try{ return JSON.parse(localStorage.getItem(LS)||'[]'); }catch(e){ return []; } }
-  function lsSet(a){ try{ localStorage.setItem(LS, JSON.stringify(a)); }catch(e){} }
-  function uid(){ return 'h'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+  var LS='cpds:highlights';     // legacy flat array (pre-groups) — migrated on first load
+  var LSG='cpds:hlgroups';      // groups store: {v,activeId,groups:[{id,name,highlights:[]}]}
+  function uid(p){ return (p||'h')+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+
+  // ---- groups storage ----
+  function groupsRead(){
+    try{ var s=JSON.parse(localStorage.getItem(LSG)||'null');
+      if(s && s.groups && s.groups.length) return s; }catch(e){}
+    return null;
+  }
+  function groupsSave(s){ try{ localStorage.setItem(LSG, JSON.stringify(s)); }catch(e){} }
+  function state(){
+    var s=groupsRead();
+    if(s) return s;
+    var legacy=[]; try{ legacy=JSON.parse(localStorage.getItem(LS)||'[]'); }catch(e){}
+    var g={ id:uid('g'), name:'My highlights', highlights:Array.isArray(legacy)?legacy:[] };
+    s={ v:1, activeId:g.id, groups:[g] };
+    groupsSave(s);
+    return s;
+  }
+  function activeGroup(){
+    var s=state();
+    var g=null, i;
+    for(i=0;i<s.groups.length;i++){ if(s.groups[i].id===s.activeId){ g=s.groups[i]; break; } }
+    if(!g){ g=s.groups[0]; s.activeId=g.id; groupsSave(s); }
+    return g;
+  }
+  // The rest of the code reads/writes the ACTIVE group through lsGet/lsSet, unchanged.
+  function lsGet(){ return activeGroup().highlights || []; }
+  function lsSet(a){
+    var s=state(), i;
+    for(i=0;i<s.groups.length;i++){ if(s.groups[i].id===s.activeId){ s.groups[i].highlights=a; break; } }
+    groupsSave(s);
+  }
+  function setActiveGroup(id){
+    var s=state(); s.activeId=id; groupsSave(s);
+    renderPage(); updateCount(); renderList();
+  }
+  function newGroup(name, highlights){
+    var s=state();
+    var g={ id:uid('g'), name:(name&&name.trim())||('Group '+(s.groups.length+1)),
+            highlights:highlights||[] };
+    s.groups.push(g); s.activeId=g.id; groupsSave(s);
+    return g;
+  }
+  function renameGroup(id, name){
+    if(!name || !name.trim()) return;
+    var s=state(), i;
+    for(i=0;i<s.groups.length;i++){ if(s.groups[i].id===id) s.groups[i].name=name.trim(); }
+    groupsSave(s); renderList();
+  }
+  function deleteGroup(id){
+    var s=state();
+    if(s.groups.length<=1) return false;
+    s.groups=s.groups.filter(function(g){ return g.id!==id; });
+    if(s.activeId===id) s.activeId=s.groups[0].id;
+    groupsSave(s); renderPage(); updateCount(); renderList();
+    return true;
+  }
   var isFlip = document.body && document.body.classList.contains('flip-body');
 
   // ---- prose / paragraph helpers ----
@@ -448,27 +503,37 @@ HIGHLIGHTS_JS = r"""(function(){
     if(!h || typeof h.text!=='string' || !h.text) return false;
     return num(h.chap)!=null && num(h.cidx)!=null && num(h.start)!=null && num(h.end)!=null && (+h.end)>(+h.start);
   }
-  function exportData(){
-    return { app:'cpds', type:'highlights', version:1, book:bookTitle(),
-             exportedAt:new Date().toISOString(), highlights:lsGet() };
+  function slug(s){ return (String(s).replace(/[^a-z0-9]+/gi,'-').replace(/^-+|-+$/g,'').toLowerCase())||'group'; }
+  function exportData(gid){
+    var s=state(), g=null, i;
+    for(i=0;i<s.groups.length;i++){ if(s.groups[i].id===(gid||s.activeId)) g=s.groups[i]; }
+    g=g||activeGroup();
+    return { app:'cpds', type:'highlights', version:1, book:bookTitle(), group:g.name,
+             exportedAt:new Date().toISOString(), highlights:g.highlights||[] };
   }
   function exportHighlights(){
-    var hs=lsGet();
-    if(!hs.length){ ioMsg('No highlights to export yet.', true); return; }
-    var blob=new Blob([JSON.stringify(exportData(), null, 2)], {type:'application/json'});
+    var g=activeGroup(), hs=g.highlights||[];
+    if(!hs.length){ ioMsg('No highlights in “'+g.name+'” to export yet.', true); return; }
+    var blob=new Blob([JSON.stringify(exportData(g.id), null, 2)], {type:'application/json'});
     var url=URL.createObjectURL(blob);
     var a=document.createElement('a');
-    a.href=url; a.download='highlights-'+new Date().toISOString().slice(0,10)+'.json';
+    a.href=url; a.download='highlights-'+slug(g.name)+'-'+new Date().toISOString().slice(0,10)+'.json';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function(){ try{ URL.revokeObjectURL(url); }catch(e){} }, 1000);
-    ioMsg(hs.length+' highlight'+(hs.length===1?'':'s')+' saved to a file.');
+    ioMsg(hs.length+' highlight'+(hs.length===1?'':'s')+' from “'+g.name+'” saved to a file.');
   }
-  function importHighlights(text){
+  // import into the active group, or into a brand-new group when opts.asNew is set
+  function importHighlights(text, opts){
+    opts=opts||{};
     var parsed;
     try{ parsed=JSON.parse(text); }catch(e){ ioMsg('Could not read file: it is not valid JSON.', true); return {added:0,updated:0,skipped:0,error:true}; }
     var incoming = Array.isArray(parsed) ? parsed
                  : (parsed && Array.isArray(parsed.highlights) ? parsed.highlights : null);
     if(!incoming){ ioMsg('No highlights found in that file.', true); return {added:0,updated:0,skipped:0,error:true}; }
+    if(opts.asNew){
+      var nm=(opts.name && opts.name.trim()) || (parsed && parsed.group) || 'Imported';
+      newGroup(nm, []);   // becomes the active group
+    }
     var existing=lsGet(), byLoc={}, byId={};
     existing.forEach(function(h){ byLoc[locKey(h)]=h; byId[h.id]=h; });
     var added=0, updated=0, skipped=0;
@@ -485,8 +550,8 @@ HIGHLIGHTS_JS = r"""(function(){
       existing.push(rec); byLoc[loc]=rec; byId[rec.id]=rec; added++;
     });
     lsSet(existing); renderPage(); updateCount(); renderList();
-    ioMsg('Imported '+added+' new, '+updated+' updated'+(skipped?(', '+skipped+' skipped'):'')+'.');
-    return {added:added, updated:updated, skipped:skipped};
+    ioMsg('Imported '+added+' new, '+updated+' updated'+(skipped?(', '+skipped+' skipped'):'')+' into “'+activeGroup().name+'”.');
+    return {added:added, updated:updated, skipped:skipped, group:activeGroup().name};
   }
   var ioMsgEl=null;
   function ioMsg(t, err){
@@ -535,14 +600,23 @@ HIGHLIGHTS_JS = r"""(function(){
       '<aside class="hl-aside" role="dialog" aria-modal="true" aria-label="Your highlights">'+
         '<div class="hl-head"><span class="hl-head-t">Your highlights</span>'+
         '<button class="hl-x" type="button" aria-label="Close">×</button></div>'+
+        '<div class="hl-groupbar">'+
+          '<select class="hl-group-select" aria-label="Choose highlight group"></select>'+
+          '<div class="hl-group-actions">'+
+            '<button class="hl-group-new" type="button" title="Create a new group">+ New</button>'+
+            '<button class="hl-group-rename" type="button" title="Rename this group">Rename</button>'+
+            '<button class="hl-group-del" type="button" title="Delete this group">Delete</button>'+
+          '</div>'+
+        '</div>'+
         '<div class="hl-list"></div>'+
         '<div class="hl-foot">'+
           '<div class="hl-io">'+
-            '<button class="hl-export" type="button">↓ Export</button>'+
+            '<button class="hl-export" type="button">↓ Export group</button>'+
             '<button class="hl-import" type="button">↑ Import</button>'+
           '</div>'+
+          '<label class="hl-asnew"><input type="checkbox" class="hl-asnew-check"> Import as a new group</label>'+
           '<p class="hl-io-msg" hidden></p>'+
-          '<button class="hl-clear" type="button">Clear all highlights</button>'+
+          '<button class="hl-clear" type="button">Clear this group</button>'+
           '<input type="file" class="hl-file" accept="application/json,.json" hidden>'+
         '</div>'+
       '</aside>';
@@ -553,22 +627,60 @@ HIGHLIGHTS_JS = r"""(function(){
     panel.querySelector('.hl-x').addEventListener('click', closePanel);
     panel.querySelector('.hl-clear').addEventListener('click', function(){
       if(!lsGet().length) return;
-      if(window.confirm('Remove all of your saved highlights? This cannot be undone.')){
+      if(window.confirm('Remove all highlights in “'+activeGroup().name+'”? This cannot be undone.')){
         lsSet([]); renderPage(); updateCount(); renderList();
       }
     });
+    // group switching + management
+    panel.querySelector('.hl-group-select').addEventListener('change', function(e){
+      setActiveGroup(e.target.value);
+    });
+    panel.querySelector('.hl-group-new').addEventListener('click', function(){
+      var nm=window.prompt('Name for the new group:', '');
+      if(nm===null) return;
+      newGroup(nm, []); renderPage(); updateCount(); renderList();
+    });
+    panel.querySelector('.hl-group-rename').addEventListener('click', function(){
+      var g=activeGroup();
+      var nm=window.prompt('Rename group:', g.name);
+      if(nm===null) return;
+      renameGroup(g.id, nm); renderList();
+    });
+    panel.querySelector('.hl-group-del').addEventListener('click', function(){
+      var s=state();
+      if(s.groups.length<=1){ ioMsg('You can’t delete your only group.', true); return; }
+      var g=activeGroup();
+      if(window.confirm('Delete the group “'+g.name+'” and its '+(g.highlights||[]).length+' highlight(s)? This cannot be undone.'))
+        deleteGroup(g.id);
+    });
     panel.querySelector('.hl-export').addEventListener('click', exportHighlights);
     var fileInput=panel.querySelector('.hl-file');
+    var asNewCheck=panel.querySelector('.hl-asnew-check');
     panel.querySelector('.hl-import').addEventListener('click', function(){ fileInput.click(); });
     fileInput.addEventListener('change', function(){
       var f=fileInput.files && fileInput.files[0]; if(!f) return;
+      var asNew=!!(asNewCheck && asNewCheck.checked);
       var reader=new FileReader();
-      reader.onload=function(){ importHighlights(String(reader.result)); fileInput.value=''; };
+      reader.onload=function(){ importHighlights(String(reader.result), {asNew:asNew}); if(asNewCheck) asNewCheck.checked=false; fileInput.value=''; };
       reader.onerror=function(){ ioMsg('Could not read the file.', true); fileInput.value=''; };
       reader.readAsText(f);
     });
   }
-  function openPanel(){ buildPanel(); renderList(); panel.hidden=false; document.body.classList.add('hl-panel-open'); }
+  function renderGroups(){
+    if(!panel) return;
+    var sel=panel.querySelector('.hl-group-select'); if(!sel) return;
+    var s=state();
+    sel.innerHTML='';
+    s.groups.forEach(function(g){
+      var o=document.createElement('option');
+      o.value=g.id;
+      o.textContent=g.name+' ('+((g.highlights&&g.highlights.length)||0)+')';
+      if(g.id===s.activeId) o.selected=true;
+      sel.appendChild(o);
+    });
+    var del=panel.querySelector('.hl-group-del'); if(del) del.disabled=(s.groups.length<=1);
+  }
+  function openPanel(){ buildPanel(); renderGroups(); renderList(); panel.hidden=false; document.body.classList.add('hl-panel-open'); }
   function closePanel(){ if(panel){ panel.hidden=true; document.body.classList.remove('hl-panel-open'); } }
   function chapHref(chap){ return chap===0 ? 'contents.html' : 'chapter-'+chap+'.html'; }
   function onThisPage(chap){
@@ -586,6 +698,7 @@ HIGHLIGHTS_JS = r"""(function(){
   function flash(el){ el.classList.add('hl-flash'); setTimeout(function(){ el.classList.remove('hl-flash'); }, 1600); }
   function renderList(){
     if(!listEl) return;
+    renderGroups();
     var all=lsGet().slice().sort(function(a,b){
       return (a.chap-b.chap) || (a.cidx-b.cidx) || (a.start-b.start);
     });
@@ -692,13 +805,16 @@ HIGHLIGHTS_JS = r"""(function(){
   document.addEventListener('keydown', function(e){ if(e.key==='Escape'){ hidePop(); hideFab(); closePanel(); } });
 
   function autorun(){
+    state();  // migrate legacy highlights into the default group on first load
     buildPanel(); updateCount();
     var ob=document.getElementById('hl-open');
     if(ob) ob.addEventListener('click', openPanel);
     if(!isFlip){ renderPage(); handleHash(); }
   }
   window.cpdsHighlights={ render:renderPage, open:openPanel,
-    exportData:exportData, importData:importHighlights };
+    exportData:exportData, importData:importHighlights,
+    state:state, setActiveGroup:setActiveGroup, newGroup:newGroup,
+    renameGroup:renameGroup, deleteGroup:deleteGroup };
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', autorun);
   else autorun();
 })();
