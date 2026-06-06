@@ -10,6 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Spectral:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script src="scripture.js" defer></script>
+<script src="highlights.js" defer></script>
 </head>
 <body class="cover-page">
 <script>
@@ -26,7 +27,7 @@
 </script>
 <div class="topbar">
   <a class="bar-link" href="index.html">Christian Preaching That Devalues Scripture</a>
-  <div class="bar-right"><a class="bar-link" href="book.html">Flip&nbsp;view</a><button class="bar-link theme-btn" onclick="toggleTheme()" aria-label="Toggle light or dark mode">◑</button></div>
+  <div class="bar-right"><a class="bar-link" href="book.html">Flip&nbsp;view</a><button class="bar-link hl-open-btn" id="hl-open" type="button" aria-label="View your highlights">Highlights<span class="hl-count" id="hl-count" hidden>0</span></button><button class="bar-link theme-btn" onclick="toggleTheme()" aria-label="Toggle light or dark mode">◑</button></div>
 </div>
 <main class="cover">
   <div class="cover-inner">
