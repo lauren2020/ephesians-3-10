@@ -86,18 +86,46 @@ def clean_to_paragraphs(raw, chap_num, chap_title):
 def esc(t):
     return html.escape(t, quote=False)
 
+# ---- text source: prefer the editable manuscript, fall back to the PDF ----
+# The book's text lives in manuscript/ as plain-text files (paragraphs separated by
+# blank lines). This is the editable source of truth. If a manuscript file is missing,
+# that chapter is re-extracted from the PDF, so the original pipeline still works.
+MANUSCRIPT = "manuscript"
+USE_MANUSCRIPT = os.path.isdir(MANUSCRIPT)
+
+def manuscript_file(num):
+    return os.path.join(MANUSCRIPT, "dedication.txt" if num == 0 else f"ch{num:02d}.txt")
+
+def manuscript_paras(path):
+    """Paragraphs are separated by one or more blank lines; lines within a paragraph
+    are joined with a space. Whitespace is normalized to match the PDF pipeline."""
+    with open(path, encoding="utf-8") as f:
+        raw = f.read()
+    out = []
+    for block in re.split(r"\n\s*\n", raw):
+        t = re.sub(r"\s+", " ", block).strip()
+        if t:
+            out.append(t)
+    return out
+
+def load_paras(num, title, start, end):
+    mf = manuscript_file(num)
+    if USE_MANUSCRIPT and os.path.exists(mf):
+        return manuscript_paras(mf), f"manuscript/{os.path.basename(mf)}"
+    raw = page_text(start, end)
+    return clean_to_paragraphs(raw, num, title), f"PDF pp.{start}-{end}"
+
 # ---- extract all chapters ----
 chapter_data = []
 for i, (num, title, start) in enumerate(CHAPTERS):
     end = (CHAPTERS[i+1][2] - 1) if i+1 < len(CHAPTERS) else LAST_PAGE
-    raw = page_text(start, end)
-    paras = clean_to_paragraphs(raw, num, title)
+    paras, src = load_paras(num, title, start, end)
     chapter_data.append((num, title, paras))
-    print(f"Chapter {num}: {len(paras)} paragraphs (pp.{start}-{end})")
+    print(f"Chapter {num}: {len(paras)} paragraphs ({src})")
 
-# dedication (pages 5-6)
-ded_raw = page_text(5, 6)
-ded = clean_to_paragraphs(ded_raw, 0, "Dedication of this book")
+# dedication (manuscript/dedication.txt, or PDF pages 5-6)
+ded, ded_src = load_paras(0, "Dedication of this book", 5, 6)
+print(f"Dedication: {len(ded)} paragraphs ({ded_src})")
 
 os.makedirs(OUT, exist_ok=True)
 
