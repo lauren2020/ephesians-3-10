@@ -48,6 +48,42 @@ body{
 .bar-right{display:flex;align-items:center;gap:1.1rem}
 .bar-link:hover{color:var(--accent)}
 .theme-btn{background:none;border:none;cursor:pointer;font-size:1rem;color:var(--muted);padding:0}
+.bar-title{flex:0 1 auto;min-width:0}
+.topbar > a.bar-title{max-width:32vw}
+
+/* ---- header search ---- */
+.bar-center{flex:1 1 auto;min-width:0;display:flex;justify-content:center;position:relative;padding:0 1rem}
+.book-search-input{
+  width:100%;max-width:24rem;box-sizing:border-box;
+  font-family:"Spectral",serif;font-size:.85rem;color:var(--ink);
+  background:var(--paper);border:1px solid var(--rule);border-radius:1.2rem;
+  padding:.4rem .9rem;outline:none;transition:border-color .15s,box-shadow .15s;
+}
+.book-search-input::placeholder{color:var(--muted)}
+.book-search-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent)}
+.book-search-results{
+  position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);
+  width:min(36rem,92vw);max-height:70vh;overflow-y:auto;z-index:60;
+  background:var(--paper);border:1px solid var(--rule);border-radius:.6rem;
+  box-shadow:0 8px 28px rgba(0,0,0,.2);padding:.3rem;
+}
+.book-search-results[hidden]{display:none}
+.bs-item{display:block;text-decoration:none;color:var(--ink);padding:.5rem .6rem;border-radius:.4rem}
+.bs-item:hover,.bs-item.sel{background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.bs-where{display:block;font-family:"Spectral",serif;font-size:.7rem;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--accent);margin-bottom:.15rem}
+.bs-snip{display:block;font-family:"EB Garamond",Georgia,serif;font-size:.95rem;line-height:1.45;color:var(--muted)}
+.bs-snip mark{background:color-mix(in srgb,var(--hl) 80%,transparent);color:var(--ink);border-radius:.12em;padding:0 .06em}
+.bs-empty{padding:.6rem .7rem;font-family:"EB Garamond",Georgia,serif;font-size:.95rem;color:var(--muted)}
+
+/* paragraph flash when jumping to a search result */
+@keyframes para-flash{0%,60%{background:color-mix(in srgb,var(--accent) 14%,transparent)}100%{background:transparent}}
+.prose p.para-flash{animation:para-flash 1.8s ease;border-radius:.2rem}
+
+@media (max-width:680px){
+  .bar-center{display:none}
+  .topbar > a.bar-title{max-width:55vw}
+}
 
 /* ---- progress ---- */
 .progress{position:sticky;top:0;height:2px;background:transparent;z-index:11;margin-top:-2px}
