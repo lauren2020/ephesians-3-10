@@ -47,9 +47,14 @@ breaks scripture references.
 ## Building the site
 
 ```bash
-pip install pythonbible --break-system-packages   # build dependency (scripture detection)
-python3 build_site.py                              # regenerates everything in site/
+pip install pythonbible pythonbible-kjv --break-system-packages   # build dependencies
+python3 build_site.py                                              # regenerates site/
 ```
+
+`pythonbible` detects scripture references; **`pythonbible-kjv` supplies the KJV verse
+text** for the scripture pop-up modals. Without the KJV package, `pythonbible` returns
+empty verse strings — so the build now aborts with an error rather than shipping a modal
+with blank verses. If you see that error, install `pythonbible-kjv` and rebuild.
 
 The build prints each chapter's source (`manuscript/chNN.txt`). `style.css` is the only
 part of `site/` that is hand-maintained rather than generated.

@@ -153,6 +153,15 @@ for para in all_paras:
 print(f"Scripture: {len(sx_passages)} passages across {len(sx_chapters)} chapters; "
       f"{len(sx_unresolved)} unresolved {sorted(sx_unresolved)[:6]}")
 
+# Guard: a missing KJV bible package makes get_verse_text() return empty strings,
+# which would silently ship a scripture modal with no verse text. Fail loudly instead.
+_nonempty = sum(1 for c in sx_chapters.values() for t in c["v"] if t and t.strip())
+if sx_chapters and _nonempty == 0:
+    raise SystemExit(
+        "ERROR: every scripture verse came back empty — the KJV bible text is not "
+        "available to pythonbible. Install it and rebuild:\n"
+        "    pip install pythonbible-kjv --break-system-packages")
+
 SCRIPTURE_JS_TEMPLATE = r"""(function(){
   var P = __PASSAGES__;
   var C = __CHAPTERS__;
