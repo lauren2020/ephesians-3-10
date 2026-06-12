@@ -1,0 +1,44 @@
+#!/bin/sh
+#
+# pre-commit hook: rebuild the site whenever the manuscript changes.
+#
+# Tracked in the repo under .githooks/ and activated with:
+#     git config core.hooksPath .githooks
+# (run once per clone — see .githooks/setup or the README note).
+#
+# Works on macOS, Linux, and Windows. Git for Windows runs this script with
+# its bundled bash, and VS Code's Git integration invokes the same git binary,
+# so commits made from the VS Code Source Control panel run this hook too.
+
+# Only act when staged changes touch the manuscript/ directory.
+if git diff --cached --name-only --diff-filter=ACMR | grep -q '^manuscript/'; then
+    echo "pre-commit: manuscript/ changed — rebuilding site/ ..."
+
+    # Find a Python interpreter (python3 on mac/linux, often python on Windows).
+    if command -v python3 >/dev/null 2>&1; then
+        PY=python3
+    elif command -v python >/dev/null 2>&1; then
+        PY=python
+    elif command -v py >/dev/null 2>&1; then
+        PY="py -3"
+    else
+        echo "pre-commit ERROR: no Python interpreter found (need python3/python/py)." >&2
+        echo "  Install Python 3 and try again, or commit with --no-verify to skip." >&2
+        exit 1
+    fi
+
+    # Run the build from the repo root regardless of where the commit was launched.
+    REPO_ROOT=$(git rev-parse --show-toplevel)
+    if ! (cd "$REPO_ROOT" && $PY build_site.py); then
+        echo "pre-commit ERROR: build_site.py failed — commit aborted." >&2
+        echo "  Fix the build (e.g. 'pip install pythonbible pythonbible-kjv')," >&2
+        echo "  or commit with --no-verify to skip this hook." >&2
+        exit 1
+    fi
+
+    # Include the freshly generated site/ in this commit so text and build stay in sync.
+    (cd "$REPO_ROOT" && git add site)
+    echo "pre-commit: site/ rebuilt and staged."
+fi
+
+exit 0
