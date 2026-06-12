@@ -277,7 +277,7 @@ scripture_js = (SCRIPTURE_JS_TEMPLATE
                 .replace("__PASSAGES__", json.dumps(sx_passages, ensure_ascii=False, separators=(",", ":")))
                 .replace("__CHAPTERS__", json.dumps(sx_chapters, ensure_ascii=False, separators=(",", ":")))
                 .replace("__BOOKMAP__", json.dumps(SX.bookmap_js(), separators=(",", ":"))))
-open(f"{OUT}/scripture.js", "w").write(scripture_js)
+open(f"{OUT}/scripture.js", "w", encoding="utf-8").write(scripture_js)
 
 # ---------- highlights: user text-highlighting + saved list panel ----------
 # No server-side data needed; this is a static client script. Anchored by
@@ -819,7 +819,7 @@ HIGHLIGHTS_JS = r"""(function(){
   else autorun();
 })();
 """
-open(f"{OUT}/highlights.js", "w").write(HIGHLIGHTS_JS)
+open(f"{OUT}/highlights.js", "w", encoding="utf-8").write(HIGHLIGHTS_JS)
 
 # ---------- search: build a lazy-loaded index of all book paragraphs ----------
 # Pages fetch this on first search so initial page load stays light. Each paragraph
@@ -835,7 +835,7 @@ search_index["paras"] += [{"c": 0, "i": i, "x": p} for i, p in enumerate(ded)]
 # Written as a JS global (not JSON) so it can be loaded with a <script> tag — that works
 # both when deployed and when the files are opened locally (file://), where fetch() of a
 # local file is blocked by the browser.
-open(f"{OUT}/search-index.js", "w").write(
+open(f"{OUT}/search-index.js", "w", encoding="utf-8").write(
     "window.__CPDS_INDEX__=" + json.dumps(search_index, ensure_ascii=False, separators=(",", ":")) + ";")
 
 SEARCH_JS = r"""(function(){
@@ -961,7 +961,7 @@ SEARCH_JS = r"""(function(){
   else hashJump();
 })();
 """
-open(f"{OUT}/search.js", "w").write(SEARCH_JS)
+open(f"{OUT}/search.js", "w", encoding="utf-8").write(SEARCH_JS)
 
 # ---------- shared head ----------
 def head(page_title, depth_home="index.html"):
@@ -1047,7 +1047,7 @@ index = f"""{head(TITLE)}
 </section>
 <footer class="site-foot">{esc(TITLE)} &middot; {esc(AUTHOR)}</footer>
 </body></html>"""
-open(f"{OUT}/index.html", "w").write(index)
+open(f"{OUT}/index.html", "w", encoding="utf-8").write(index)
 
 # ---------- contents page (with dedication) ----------
 ded_html = "\n".join(f'    <p data-cidx="{i}">{esc(p)}</p>' for i, p in enumerate(ded))
@@ -1069,7 +1069,7 @@ contents = f"""{head('Contents — ' + TITLE)}
 </main>
 <footer class="site-foot">{esc(TITLE)} &middot; {esc(AUTHOR)}</footer>
 </body></html>"""
-open(f"{OUT}/contents.html", "w").write(contents)
+open(f"{OUT}/contents.html", "w", encoding="utf-8").write(contents)
 
 # ---------- chapter pages ----------
 for idx, (num, title, paras) in enumerate(chapter_data):
@@ -1108,7 +1108,7 @@ window.addEventListener('scroll',function(){{
 }});
 </script>
 </body></html>"""
-    open(f"{OUT}/chapter-{num}.html", "w").write(page)
+    open(f"{OUT}/chapter-{num}.html", "w", encoding="utf-8").write(page)
 
 # ---------- flip-book view ----------
 book_json = json.dumps(
@@ -1410,6 +1410,6 @@ Promise.race([fontsReady, new Promise(r => setTimeout(r, 1800))])
   .then(() => requestAnimationFrame(safeRender));
 </script>
 </body></html>"""
-open(f"{OUT}/book.html", "w").write(flip)
+open(f"{OUT}/book.html", "w", encoding="utf-8").write(flip)
 
 print("Done. Files in", OUT)

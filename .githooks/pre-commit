@@ -14,22 +14,36 @@
 if git diff --cached --name-only --diff-filter=ACMR | grep -q '^manuscript/'; then
     echo "pre-commit: manuscript/ changed — rebuilding site/ ..."
 
-    # Find a Python interpreter (python3 on mac/linux, often python on Windows).
-    if command -v python3 >/dev/null 2>&1; then
-        PY=python3
-    elif command -v python >/dev/null 2>&1; then
-        PY=python
-    elif command -v py >/dev/null 2>&1; then
+    # Find a Python interpreter. On Windows, python/python3 may be Microsoft
+    # Store aliases that exist on PATH but are not real interpreters, so verify
+    # each candidate before using it.
+    PY=
+    if command -v py >/dev/null 2>&1 && py -3 --version >/dev/null 2>&1; then
         PY="py -3"
     else
-        echo "pre-commit ERROR: no Python interpreter found (need python3/python/py)." >&2
+        for EXE in "$LOCALAPPDATA"/Programs/Python/Python*/python.exe "$HOME"/AppData/Local/Programs/Python/Python*/python.exe; do
+            if [ -x "$EXE" ] && "$EXE" --version >/dev/null 2>&1; then
+                PY="$EXE"
+                break
+            fi
+        done
+    fi
+
+    if [ -n "$PY" ]; then
+        :
+    elif command -v python3 >/dev/null 2>&1 && python3 --version >/dev/null 2>&1; then
+        PY=python3
+    elif command -v python >/dev/null 2>&1 && python --version >/dev/null 2>&1; then
+        PY=python
+    else
+        echo "pre-commit ERROR: no working Python 3 interpreter found." >&2
         echo "  Install Python 3 and try again, or commit with --no-verify to skip." >&2
         exit 1
     fi
 
     # Run the build from the repo root regardless of where the commit was launched.
     REPO_ROOT=$(git rev-parse --show-toplevel)
-    if ! (cd "$REPO_ROOT" && $PY build_site.py); then
+    if ! (cd "$REPO_ROOT" && PYTHONDONTWRITEBYTECODE=1 $PY build_site.py); then
         echo "pre-commit ERROR: build_site.py failed — commit aborted." >&2
         echo "  Fix the build (e.g. 'pip install pythonbible pythonbible-kjv')," >&2
         echo "  or commit with --no-verify to skip this hook." >&2
