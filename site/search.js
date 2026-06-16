@@ -3,7 +3,7 @@
   var box=document.querySelector('.book-search-results');
   var INDEX=null, LOADING=false, cur=[], sel=-1, lastTerms=[];
   function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-  function chapHref(c){ return c===0 ? 'contents.html' : 'chapter-'+c+'.html'; }
+  function chapHref(c){ return c===0 ? 'contents.html' : (c===1 ? 'index.html' : 'chapter-'+c+'.html'); }
   var pending=[];
   function load(cb){
     if(INDEX){ cb(); return; }

@@ -396,7 +396,7 @@
   }
   function openPanel(){ buildPanel(); renderGroups(); renderList(); panel.hidden=false; document.body.classList.add('hl-panel-open'); }
   function closePanel(){ if(panel){ panel.hidden=true; document.body.classList.remove('hl-panel-open'); } }
-  function chapHref(chap){ return chap===0 ? 'contents.html' : 'chapter-'+chap+'.html'; }
+  function chapHref(chap){ return chap===0 ? 'contents.html' : (chap===1 ? 'index.html' : 'chapter-'+chap+'.html'); }
   function onThisPage(chap){
     return proseEls().some(function(pr){ return +pr.getAttribute('data-chap')===chap; });
   }

@@ -153,6 +153,14 @@ body{
   font-size:.78rem;letter-spacing:.04em;padding:2.5rem 1rem 3.5rem;
   border-top:1px solid var(--rule);margin-top:2rem}
 
+/* ---- thesis landing (Chapter 1 as the front door) ---- */
+.thesis-head{margin-top:1.4rem}
+.thesis-kicker{color:var(--muted)}
+.thesis-sub{color:var(--muted);font-style:italic;font-size:1.15rem;line-height:1.5;
+  margin:1.1rem auto 0;max-width:32rem}
+.thesis-cta{text-align:center;margin:3.4rem 0 0;padding-top:2.4rem;border-top:1px solid var(--rule)}
+.thesis-cta p{color:var(--muted);font-size:1.05rem;margin:0 0 1.4rem}
+
 .alt-read{margin:1.3rem 0 0}
 .alt-read a{color:var(--muted);text-decoration:none;font-family:"Spectral",serif;
   font-size:.92rem;border-bottom:1px solid var(--rule);padding-bottom:1px}

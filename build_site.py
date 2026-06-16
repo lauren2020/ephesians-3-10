@@ -682,7 +682,7 @@ HIGHLIGHTS_JS = r"""(function(){
   }
   function openPanel(){ buildPanel(); renderGroups(); renderList(); panel.hidden=false; document.body.classList.add('hl-panel-open'); }
   function closePanel(){ if(panel){ panel.hidden=true; document.body.classList.remove('hl-panel-open'); } }
-  function chapHref(chap){ return chap===0 ? 'contents.html' : 'chapter-'+chap+'.html'; }
+  function chapHref(chap){ return chap===0 ? 'contents.html' : (chap===1 ? 'index.html' : 'chapter-'+chap+'.html'); }
   function onThisPage(chap){
     return proseEls().some(function(pr){ return +pr.getAttribute('data-chap')===chap; });
   }
@@ -843,7 +843,7 @@ SEARCH_JS = r"""(function(){
   var box=document.querySelector('.book-search-results');
   var INDEX=null, LOADING=false, cur=[], sel=-1, lastTerms=[];
   function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-  function chapHref(c){ return c===0 ? 'contents.html' : 'chapter-'+c+'.html'; }
+  function chapHref(c){ return c===0 ? 'contents.html' : (c===1 ? 'index.html' : 'chapter-'+c+'.html'); }
   var pending=[];
   function load(cb){
     if(INDEX){ cb(); return; }
@@ -994,7 +994,13 @@ THEME_SCRIPT = """<script>
 })();
 </script>"""
 
-def topbar(show_contents=True, view="scroll"):
+def chap_href(n):
+    """Canonical URL for a chapter. Chapter 1 is the site's landing page, so it
+    lives at index.html; every other chapter keeps its own page."""
+    return "index.html" if n == 1 else f"chapter-{n}.html"
+
+def topbar(show_contents=True, view="scroll", show_full_book=True):
+    fb = '<a class="bar-link" href="full-book.html">Full&nbsp;Book</a>' if show_full_book else ''
     c = '<a class="bar-link" href="contents.html">Contents</a>' if show_contents else ''
     if view == "flip":
         viewlink = '<a class="bar-link" href="index.html">Scroll&nbsp;view</a>'
@@ -1011,19 +1017,66 @@ def topbar(show_contents=True, view="scroll"):
     return f"""<div class="topbar">
   <a class="bar-link bar-title" href="index.html">{esc(TITLE)}</a>
   {search}
-  <div class="bar-right">{c}{viewlink}{hl}<button class="bar-link theme-btn" onclick="toggleTheme()" aria-label="Toggle light or dark mode">◑</button></div>
+  <div class="bar-right">{fb}{c}{viewlink}{hl}<button class="bar-link theme-btn" onclick="toggleTheme()" aria-label="Toggle light or dark mode">◑</button></div>
 </div>"""
 
-# ---------- index / cover ----------
+# ---------- shared table-of-contents markup ----------
 toc_items = "\n".join(
-    f'    <li><a href="chapter-{n}.html"><span class="toc-num">{n}</span>'
+    f'    <li><a href="{chap_href(n)}"><span class="toc-num">{n}</span>'
     f'<span class="toc-title">{esc(t)}</span></a></li>'
     for n, t, _ in chapter_data
 )
+
+# ---------- index / landing: Chapter 1 presented as the book's thesis ----------
+# The site's front door is now the opening chapter itself, framed as a standalone
+# argument. The whole-book cover (title, blurb, contents) moves to full-book.html,
+# reachable from the "Full Book" tab in every top bar.
+ch1_num, ch1_title, ch1_paras = chapter_data[0]
+ch1_next = chapter_data[1] if len(chapter_data) > 1 else None
+ch1_body = "\n".join(f'    <p data-cidx="{i}">{esc(p)}</p>' for i, p in enumerate(ch1_paras))
+ch1_next_link = (f'<a class="nav-next" href="{chap_href(ch1_next[0])}">Chapter {ch1_next[0]} &rarr;</a>'
+                 if ch1_next else '<a class="nav-next" href="full-book.html">The full book &rarr;</a>')
 index = f"""{head(TITLE)}
+<body>
+{THEME_SCRIPT}
+{topbar()}
+<div class="progress"><div class="progress-bar" id="pb"></div></div>
+<main class="reader">
+  <header class="chap-head thesis-head">
+    <p class="chap-num thesis-kicker">{esc(TITLE)}</p>
+    <h1 class="chap-title">{esc(ch1_title)}</h1>
+    <p class="thesis-sub">{esc(SUBTITLE)}</p>
+  </header>
+  <article class="prose" data-chap="{ch1_num}" data-chap-title="{esc(ch1_title)}">
+{ch1_body}
+  </article>
+  <aside class="thesis-cta">
+    <p>This is the opening chapter &mdash; the thesis of an essay in {len(chapter_data)} chapters.</p>
+    <a class="begin" href="full-book.html">Read the full book &rarr;</a>
+  </aside>
+  <nav class="chap-nav">
+    <a class="nav-prev" href="full-book.html">&larr; Full book</a>
+    <a class="nav-top" href="#" onclick="window.scrollTo({{top:0,behavior:'smooth'}});return false;">Top</a>
+    {ch1_next_link}
+  </nav>
+</main>
+<footer class="site-foot">{esc(TITLE)} &middot; {esc(AUTHOR)}</footer>
+<script>
+var pb=document.getElementById('pb');
+window.addEventListener('scroll',function(){{
+  var h=document.documentElement;
+  var p=(h.scrollTop)/(h.scrollHeight-h.clientHeight);
+  pb.style.width=(p*100)+'%';
+}});
+</script>
+</body></html>"""
+open(f"{OUT}/index.html", "w", encoding="utf-8").write(index)
+
+# ---------- full book: the whole-work cover (title, blurb, contents) ----------
+full_book = f"""{head('The full book — ' + TITLE)}
 <body class="cover-page">
 {THEME_SCRIPT}
-{topbar(show_contents=False)}
+{topbar(show_contents=False, show_full_book=False)}
 <main class="cover">
   <div class="cover-inner">
     <p class="kicker">An essay in {len(chapter_data)} chapters</p>
@@ -1034,7 +1087,7 @@ index = f"""{head(TITLE)}
       &ldquo;lean unto their own understanding&rdquo; rather than report what God plainly inspired &mdash;
       and a case for exposition grounded in the conviction that <em>why</em> God spoke matters more than
       competing opinions about <em>what</em> He meant.</p>
-    <a class="begin" href="chapter-1.html">Begin reading &rarr;</a>
+    <a class="begin" href="{chap_href(1)}">Begin reading &rarr;</a>
     <p class="alt-read"><a href="book.html">or turn the pages as a flip-book &rarr;</a></p>
   </div>
 </main>
@@ -1047,7 +1100,7 @@ index = f"""{head(TITLE)}
 </section>
 <footer class="site-foot">{esc(TITLE)} &middot; {esc(AUTHOR)}</footer>
 </body></html>"""
-open(f"{OUT}/index.html", "w", encoding="utf-8").write(index)
+open(f"{OUT}/full-book.html", "w", encoding="utf-8").write(full_book)
 
 # ---------- contents page (with dedication) ----------
 ded_html = "\n".join(f'    <p data-cidx="{i}">{esc(p)}</p>' for i, p in enumerate(ded))
@@ -1065,20 +1118,34 @@ contents = f"""{head('Contents — ' + TITLE)}
   <div class="prose" data-chap="0" data-chap-title="Dedication">
 {ded_html}
   </div>
-  <nav class="chap-nav"><a href="chapter-1.html">Begin reading: Chapter 1 &rarr;</a></nav>
+  <nav class="chap-nav"><a href="{chap_href(1)}">Begin reading: Chapter 1 &rarr;</a></nav>
 </main>
 <footer class="site-foot">{esc(TITLE)} &middot; {esc(AUTHOR)}</footer>
 </body></html>"""
 open(f"{OUT}/contents.html", "w", encoding="utf-8").write(contents)
 
 # ---------- chapter pages ----------
+# Chapter 1 is served at index.html (the landing/thesis page above), so instead of a
+# full page we leave a redirect stub at chapter-1.html for any old links or bookmarks.
 for idx, (num, title, paras) in enumerate(chapter_data):
+    if num == 1:
+        open(f"{OUT}/chapter-{num}.html", "w", encoding="utf-8").write(
+            f"""{head(f'Chapter 1: {title} — ' + TITLE)}
+<meta http-equiv="refresh" content="0; url=index.html">
+<link rel="canonical" href="index.html">
+<body>
+<p style="font-family:Spectral,serif;text-align:center;margin:4rem 1rem;">
+  Chapter&nbsp;1 now opens the book &mdash; redirecting to
+  <a href="index.html">the opening chapter</a>&hellip;</p>
+<script>location.replace('index.html');</script>
+</body></html>""")
+        continue
     body = "\n".join(f'    <p data-cidx="{i}">{esc(p)}</p>' for i, p in enumerate(paras))
-    prev_link = (f'<a class="nav-prev" href="chapter-{num-1}.html">&larr; Chapter {num-1}</a>'
+    prev_link = (f'<a class="nav-prev" href="{chap_href(num-1)}">&larr; Chapter {num-1}</a>'
                  if idx > 0 else '<a class="nav-prev" href="contents.html">&larr; Contents</a>')
     nxt = chapter_data[idx+1] if idx+1 < len(chapter_data) else None
-    next_link = (f'<a class="nav-next" href="chapter-{nxt[0]}.html">Chapter {nxt[0]} &rarr;</a>'
-                 if nxt else '<a class="nav-next" href="index.html">Back to cover &rarr;</a>')
+    next_link = (f'<a class="nav-next" href="{chap_href(nxt[0])}">Chapter {nxt[0]} &rarr;</a>'
+                 if nxt else '<a class="nav-next" href="full-book.html">The full book &rarr;</a>')
     page = f"""{head(f'Chapter {num}: {title} — ' + TITLE)}
 <body>
 {THEME_SCRIPT}
